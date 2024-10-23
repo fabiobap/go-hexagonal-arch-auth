@@ -1,0 +1,8 @@
+.idea/
+*.iml
+banking-auth
+database.yml
+.env
+tmp/
+build/
+build/
