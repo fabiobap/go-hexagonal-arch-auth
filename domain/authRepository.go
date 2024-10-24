@@ -7,6 +7,7 @@ import (
 	"github.com/go-hexagonal-arch-auth/logger"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthRepository interface {
@@ -20,18 +21,28 @@ type AuthRepositoryDb struct {
 
 func (d AuthRepositoryDb) FindBy(username, password string) (*Login, *errs.AppError) {
 	var login Login
-	sqlVerify := `SELECT username, u.customer_id, role, group_concat(a.account_id) as account_numbers FROM users u
+	sqlVerify := `SELECT username, password, u.customer_id, role, group_concat(a.account_id) as account_numbers FROM users u
                   LEFT JOIN accounts a ON a.customer_id = u.customer_id
-                WHERE username = ? and password = ?
+                WHERE username = ?
                 GROUP BY a.customer_id`
 
-	err := d.client.Get(&login, sqlVerify, username, password)
+	err := d.client.Get(&login, sqlVerify, username)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errs.NewAuthenticationError("invalid credentials")
 		} else {
 			logger.Error("Error while verifying login request from database: " + err.Error())
 			return nil, errs.NewUnexpectedError("Unexpected database error")
+		}
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(login.Password), []byte(password))
+	if err != nil {
+		if err == bcrypt.ErrMismatchedHashAndPassword {
+			return nil, errs.NewAuthenticationError("invalid credentials")
+		} else {
+			logger.Error("Error while decrypting password: " + err.Error())
+			return nil, errs.NewUnexpectedError("Unexpected decrypt error")
 		}
 	}
 
